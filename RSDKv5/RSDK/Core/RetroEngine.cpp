@@ -1046,7 +1046,7 @@ void RSDK::LoadGameConfig()
             ReadString(&info, textBuffer);
 
             RETRO_HASH_MD5(hash);
-            GEN_HASH_MD5_BUFFER(textBuffer, hash);
+            GEN_HASH_MD5(textBuffer, hash);
 
             if (objectClassCount > 0) {
                 globalObjectIDs[globalObjectCount] = 0;
