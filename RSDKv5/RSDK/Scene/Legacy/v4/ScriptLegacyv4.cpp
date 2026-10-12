@@ -3389,8 +3389,6 @@ void RSDK::Legacy::v4::ProcessScript(int32 scriptCodeStart, int32 jumpTableStart
                     }
                     case VAR_OBJECTJUMPPRESS: {
                         scriptEng.operands[i] = objectEntityList[arrayVal].jumpPress;
-                        if (scriptEng.operands[i])
-                            printf("");
                         break;
                     }
                     case VAR_OBJECTJUMPHOLD: {
@@ -4826,10 +4824,10 @@ void RSDK::Legacy::v4::ProcessScript(int32 scriptCodeStart, int32 jumpTableStart
                     default: break;
                     case CSIDE_FLOOR: ObjectFloorCollision(scriptEng.operands[1], scriptEng.operands[2], scriptEng.operands[3]); break;
                     case CSIDE_LWALL: ObjectLWallCollision(scriptEng.operands[1], scriptEng.operands[2], scriptEng.operands[3]); break;
-                    case CSIDE_RWALL: ObjectRWallCollision(scriptEng.operands[1], scriptEng.operands[2], scriptEng.operands[3]); break;
-                    case CSIDE_ROOF: ObjectRoofCollision(scriptEng.operands[1], scriptEng.operands[2], scriptEng.operands[3]); break;
-                    case 4: ObjectLWallCollision(scriptEng.operands[2], 0, objectEntityList[scriptEng.operands[1]].collisionPlane); break;
-                    case 5: ObjectLWallCollision(scriptEng.operands[2], 0, objectEntityList[scriptEng.operands[1]].collisionPlane); break;
+                    case CSIDE_RWALL: ObjectRWallCollision(scriptEng.operands[1] - 1, scriptEng.operands[2], scriptEng.operands[3]); break;
+                    case CSIDE_ROOF: ObjectRoofCollision(scriptEng.operands[1], scriptEng.operands[2] - 1, scriptEng.operands[3]); break;
+                    case CSIDE_LENTITY: ObjectLWallCollision(scriptEng.operands[2], 0, objectEntityList[scriptEng.operands[1]].collisionPlane); break;
+                    case CSIDE_RENTITY: ObjectLWallCollision(scriptEng.operands[2] - 1, 0, objectEntityList[scriptEng.operands[1]].collisionPlane); break;
                 }
                 break;
             case FUNC_OBJECTTILEGRIP:
@@ -4838,10 +4836,10 @@ void RSDK::Legacy::v4::ProcessScript(int32 scriptCodeStart, int32 jumpTableStart
                     default: break;
                     case CSIDE_FLOOR: ObjectFloorGrip(scriptEng.operands[1], scriptEng.operands[2], scriptEng.operands[3]); break;
                     case CSIDE_LWALL: ObjectLWallGrip(scriptEng.operands[1], scriptEng.operands[2], scriptEng.operands[3]); break;
-                    case CSIDE_RWALL: ObjectRWallGrip(scriptEng.operands[1], scriptEng.operands[2], scriptEng.operands[3]); break;
-                    case CSIDE_ROOF: ObjectRoofGrip(scriptEng.operands[1], scriptEng.operands[2], scriptEng.operands[3]); break;
-                    case 4: ObjectLEntityGrip(scriptEng.operands[1], scriptEng.operands[2], scriptEng.operands[3]); break;
-                    case 5: ObjectREntityGrip(scriptEng.operands[1], scriptEng.operands[2], scriptEng.operands[3]); break;
+                    case CSIDE_RWALL: ObjectRWallGrip(scriptEng.operands[1] - 1, scriptEng.operands[2], scriptEng.operands[3]); break;
+                    case CSIDE_ROOF: ObjectRoofGrip(scriptEng.operands[1], scriptEng.operands[2] - 1, scriptEng.operands[3]); break;
+                    case CSIDE_LENTITY: ObjectLEntityGrip(scriptEng.operands[1], scriptEng.operands[2], scriptEng.operands[3]); break;
+                    case CSIDE_RENTITY: ObjectREntityGrip(scriptEng.operands[1], scriptEng.operands[2], scriptEng.operands[3]); break;
                 }
                 break;
             case FUNC_NOT: scriptEng.operands[0] = ~scriptEng.operands[0]; break;
@@ -5852,7 +5850,7 @@ void RSDK::Legacy::v4::ProcessScript(int32 scriptCodeStart, int32 jumpTableStart
                     case VAR_STAGELISTPOS: {
                         SceneListInfo *list = &sceneInfo.listCategory[sceneInfo.activeCategory];
 
-                        if (list->sceneOffsetStart + scriptEng.operands[i] < list->sceneOffsetEnd)
+                        if (list->sceneOffsetStart + scriptEng.operands[i] <= list->sceneOffsetEnd)
                             sceneInfo.listPos = list->sceneOffsetStart + scriptEng.operands[i];
                         break;
                     }

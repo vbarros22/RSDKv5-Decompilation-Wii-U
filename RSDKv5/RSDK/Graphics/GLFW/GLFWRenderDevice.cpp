@@ -55,19 +55,14 @@ int32 RenderDevice::monitorIndex;
 
 uint32 *RenderDevice::videoBuffer;
 
-bool RenderDevice::Init()
+// Creates a window using the video settings
+GLFWwindow *RenderDevice::CreateGLFWWindow(void)
 {
-    glfwInit();
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, _GLVERSION / 10);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, _GLVERSION % 10);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_ANY_PROFILE);
-    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-
-    if (!videoSettings.bordered)
-        glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
-
+    GLFWwindow *win;
     GLFWmonitor *monitor = NULL;
     int32 w, h;
+
+    glfwWindowHint(GLFW_DECORATED, videoSettings.bordered);
 
     if (videoSettings.windowed) {
         w = videoSettings.windowWidth;
@@ -85,18 +80,53 @@ bool RenderDevice::Init()
         h       = videoSettings.fsHeight;
     }
 
-    window = glfwCreateWindow(w, h, gameVerInfo.gameTitle, monitor, NULL);
-    if (!window) {
+    win = glfwCreateWindow(w, h, gameVerInfo.gameTitle, monitor, NULL);
+    if (!win) {
         PrintLog(PRINT_NORMAL, "ERROR: [GLFW] window creation failed");
-        return false;
+        return NULL;
     }
+    if (videoSettings.windowed) {
+        // Center the window
+        monitor = glfwGetPrimaryMonitor();
+        const GLFWvidmode *mode = glfwGetVideoMode(monitor);
+        int x, y;
+        glfwGetMonitorPos(monitor, &x, &y);
+        // Get scaling for HiDPI screens
+        float xscale, yscale;
+        glfwGetMonitorContentScale(monitor, &xscale, &yscale);
+        int xpos = x + (mode->width - (int)((float)videoSettings.windowWidth * xscale)) / 2;
+        int ypos = y + (mode->height - (int)((float)videoSettings.windowHeight * yscale)) / 2;
+        glfwSetWindowPos(win, xpos, ypos);
+    }
+    glfwShowWindow(win);
     PrintLog(PRINT_NORMAL, "w: %d h: %d windowed: %d", w, h, videoSettings.windowed);
 
-    glfwSetKeyCallback(window, ProcessKeyEvent);
+    glfwSetKeyCallback(win, ProcessKeyEvent);
+    glfwSetMouseButtonCallback(win, ProcessMouseEvent);
+    glfwSetWindowFocusCallback(win, ProcessFocusEvent);
+    glfwSetWindowMaximizeCallback(win, ProcessMaximizeEvent);
+
+    return win;
+}
+
+bool RenderDevice::Init()
+{
+    glfwInit();
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, _GLVERSION / 10);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, _GLVERSION % 10);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_ANY_PROFILE);
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+    glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+    glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE); // HiDPI scaling support
+#if GLFW_VERSION_MAJOR >= 3 && GLFW_VERSION_MINOR >= 4
+    // Disable framebuffer scaling which (surprisingly) makes the framebuffer scale correctly on Wayland
+    glfwWindowHint(GLFW_SCALE_FRAMEBUFFER, GLFW_FALSE);
+#endif
+
+    if ((window = CreateGLFWWindow()) == NULL)
+        return false;
+
     glfwSetJoystickCallback(ProcessJoystickEvent);
-    glfwSetMouseButtonCallback(window, ProcessMouseEvent);
-    glfwSetWindowFocusCallback(window, ProcessFocusEvent);
-    glfwSetWindowMaximizeCallback(window, ProcessMaximizeEvent);
 
     if (!SetupRendering() || !AudioDevice::Init())
         return false;
@@ -108,8 +138,9 @@ bool RenderDevice::Init()
 bool RenderDevice::SetupRendering()
 {
     glfwMakeContextCurrent(window);
-    GLenum err;
-    if ((err = glewInit()) != GLEW_OK) {
+    GLenum err = glewInit();
+    // Wayland workaround, see https://github.com/nigels-com/glew/issues/172
+    if (err != GLEW_OK && err != GLEW_ERROR_NO_GLX_DISPLAY) {
         PrintLog(PRINT_NORMAL, "ERROR: failed to initialize GLEW: %s", glewGetErrorString(err));
         return false;
     }
@@ -742,7 +773,6 @@ void RenderDevice::LoadShader(const char *fileName, bool32 linear)
         return;
 
     ShaderEntry *shader = &shaderList[shaderCount];
-    shader->linear      = linear;
     sprintf_s(shader->name, sizeof(shader->name), "%s", fileName);
 
     GLint success;
@@ -761,6 +791,7 @@ void RenderDevice::LoadShader(const char *fileName, bool32 linear)
         vert                   = glCreateShader(GL_VERTEX_SHADER);
         glShaderSource(vert, 3, glchar, NULL);
         glCompileShader(vert);
+        RemoveStorageEntry((void **)&fileData);
 
         glGetShaderiv(vert, GL_COMPILE_STATUS, &success);
         if (!success) {
@@ -785,6 +816,7 @@ void RenderDevice::LoadShader(const char *fileName, bool32 linear)
         frag                   = glCreateShader(GL_FRAGMENT_SHADER);
         glShaderSource(frag, 3, glchar, NULL);
         glCompileShader(frag);
+        RemoveStorageEntry((void **)&fileData);
 
         glGetShaderiv(frag, GL_COMPILE_STATUS, &success);
         if (!success) {
@@ -795,6 +827,8 @@ void RenderDevice::LoadShader(const char *fileName, bool32 linear)
     }
     else
         return;
+
+    shader->linear = linear;
 
     shader->programID = glCreateProgram();
     glAttachShader(shader->programID, vert);
@@ -822,39 +856,9 @@ void RenderDevice::RefreshWindow()
     videoSettings.windowState = WINDOWSTATE_UNINITIALIZED;
 
     Release(true);
-    if (!videoSettings.bordered)
-        glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
 
-    GLFWmonitor *monitor = NULL;
-    int32 w, h;
-
-    if (videoSettings.windowed) {
-        w = videoSettings.windowWidth;
-        h = videoSettings.windowHeight;
-    }
-    else if (videoSettings.fsWidth <= 0 || videoSettings.fsHeight <= 0) {
-        monitor                 = glfwGetPrimaryMonitor();
-        const GLFWvidmode *mode = glfwGetVideoMode(monitor);
-        w                       = mode->width;
-        h                       = mode->height;
-    }
-    else {
-        monitor = glfwGetPrimaryMonitor();
-        w       = videoSettings.fsWidth;
-        h       = videoSettings.fsHeight;
-    }
-
-    window = glfwCreateWindow(w, h, gameVerInfo.gameTitle, monitor, NULL);
-    if (!window) {
-        PrintLog(PRINT_NORMAL, "ERROR: [GLFW] window creation failed");
+    if ((window = CreateGLFWWindow()) == NULL)
         return;
-    }
-    PrintLog(PRINT_NORMAL, "w: %d h: %d windowed: %d", w, h, videoSettings.windowed);
-
-    glfwSetKeyCallback(window, ProcessKeyEvent);
-    glfwSetMouseButtonCallback(window, ProcessMouseEvent);
-    glfwSetWindowFocusCallback(window, ProcessFocusEvent);
-    glfwSetWindowMaximizeCallback(window, ProcessMaximizeEvent);
 
     glfwMakeContextCurrent(window);
 
@@ -1071,8 +1075,9 @@ void RenderDevice::ProcessKeyEvent(GLFWwindow *, int32 key, int32 scancode, int3
                 case GLFW_KEY_F1:
                     if (engine.devMenu) {
                         sceneInfo.listPos--;
-                        if (sceneInfo.listPos < sceneInfo.listCategory[sceneInfo.activeCategory].sceneOffsetStart
-                            || sceneInfo.listPos >= sceneInfo.listCategory[sceneInfo.activeCategory].sceneOffsetEnd) {
+                        while (sceneInfo.listPos < sceneInfo.listCategory[sceneInfo.activeCategory].sceneOffsetStart
+                            || sceneInfo.listPos > sceneInfo.listCategory[sceneInfo.activeCategory].sceneOffsetEnd
+                            || !sceneInfo.listCategory[sceneInfo.activeCategory].sceneCount) {
                             sceneInfo.activeCategory--;
                             if (sceneInfo.activeCategory >= sceneInfo.categoryCount) {
                                 sceneInfo.activeCategory = sceneInfo.categoryCount - 1;
@@ -1096,7 +1101,9 @@ void RenderDevice::ProcessKeyEvent(GLFWwindow *, int32 key, int32 scancode, int3
                 case GLFW_KEY_F2:
                     if (engine.devMenu) {
                         sceneInfo.listPos++;
-                        if (sceneInfo.listPos >= sceneInfo.listCategory[sceneInfo.activeCategory].sceneOffsetEnd || sceneInfo.listPos == 0) {
+                        while (sceneInfo.listPos < sceneInfo.listCategory[sceneInfo.activeCategory].sceneOffsetStart
+                            || sceneInfo.listPos > sceneInfo.listCategory[sceneInfo.activeCategory].sceneOffsetEnd
+                            || !sceneInfo.listCategory[sceneInfo.activeCategory].sceneCount) {
                             sceneInfo.activeCategory++;
                             if (sceneInfo.activeCategory >= sceneInfo.categoryCount) {
                                 sceneInfo.activeCategory = 0;

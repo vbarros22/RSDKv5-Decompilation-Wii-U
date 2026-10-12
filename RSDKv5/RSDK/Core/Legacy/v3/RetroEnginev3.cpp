@@ -157,7 +157,7 @@ bool32 RSDK::Legacy::v3::LoadGameConfig(const char *filepath)
                 ReadInt8(&info);
             }
 
-            category->sceneOffsetEnd = category->sceneOffsetStart + category->sceneCount;
+            category->sceneOffsetEnd = category->sceneOffsetStart + category->sceneCount - 1;
             sceneID += category->sceneCount;
         }
 
@@ -169,11 +169,7 @@ bool32 RSDK::Legacy::v3::LoadGameConfig(const char *filepath)
         v3::LoadGameXML();
         SetGlobalVariableByName("Options.DevMenuFlag", engine.devMenu ? 1 : 0);
         SetGlobalVariableByName("Engine.Standalone", 0);
-#if !RSDK_AUTOBUILD
-        SetGlobalVariableByName("game.hasPlusDLC", 1);
-#else
-        SetGlobalVariableByName("game.hasPlusDLC", 0);
-#endif
+        SetGlobalVariableByName("game.hasPlusDLC", !RSDK_AUTOBUILD);
 #endif
 
         SetGlobalVariableByName("Engine.PlatformId", gamePlatformID);
@@ -315,6 +311,10 @@ enum RetroEngineCallbacks {
     NOTIFY_STATS_CHARA_ACTION2 = 165,
 
     // Sega Forever stuff
+    // Mod CBs start at about 1000
+    CALLBACK_STARTGAME                        = 101,
+    CALLBACK_NONE_104                         = 104,
+    CALLBACK_SHOWURL                          = 107,
     CALLBACK_SHOWMENU_2                       = 997,
     CALLBACK_SHOWHELPCENTER                   = 998,
     CALLBACK_CHANGEADSTYPE                    = 999,
@@ -473,6 +473,14 @@ void RSDK::Legacy::v3::RetroEngineCallback(int32 callbackID)
         case NOTIFY_STATS_CHARA_ACTION2: PrintLog(PRINT_NORMAL, "NOTIFY: StatsCharaAction2() -> %d, %d, %d", notifyParam1, notifyParam2, notifyParam3); break;
 
         // Sega Forever stuff
+        case CALLBACK_STARTGAME:
+            PrintLog(PRINT_NORMAL, "Callback: startGame()");
+
+            // Set lives count and the like
+            SetGlobalVariableByName("Config.NumOfLives", 3);
+            SetGlobalVariableByName("Config.IsPremiumUser", 1);
+            break;
+        case CALLBACK_SHOWURL: PrintLog(PRINT_NORMAL, "Callback: showURL(\"https://www.sega.com\")"); break;
         case CALLBACK_SHOWMENU_2: PrintLog(PRINT_NORMAL, "Callback: showMenu(2)"); break;
         case CALLBACK_SHOWHELPCENTER: PrintLog(PRINT_NORMAL, "Callback: Show Help Center"); break;
         case CALLBACK_CHANGEADSTYPE: PrintLog(PRINT_NORMAL, "Callback: Change Ads Type"); break;

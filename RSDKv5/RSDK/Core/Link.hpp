@@ -267,9 +267,6 @@ enum FunctionTableIDs {
     FunctionTable_GetSfx,
     FunctionTable_PlaySfx,
     FunctionTable_StopSfx,
-#if RETRO_REV0U
-    FunctionTable_StopAllSfx,
-#endif
     FunctionTable_PlayMusic,
     FunctionTable_SetChannelAttributes,
     FunctionTable_StopChannel,
@@ -322,6 +319,7 @@ enum FunctionTableIDs {
 #if RETRO_REV0U
     FunctionTable_NotifyCallback,
     FunctionTable_SetGameFinished,
+    FunctionTable_StopAllSfx,
 #endif
     FunctionTable_Count,
 };
@@ -497,7 +495,7 @@ public:
 
         Handle ret = NULL;
         if (prefix) {
-            int32 last = path.find_last_of('/') + 1;
+            int32 last = (int32)path.find_last_of('/') + 1;
             if (last == std::string::npos + 1)
                 ret = PlatformLoadLibrary(prefix + path);
             else

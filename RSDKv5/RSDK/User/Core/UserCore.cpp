@@ -322,8 +322,9 @@ void RSDK::LoadSettingsINI()
         customSettings.enableControllerDebugging = iniparser_getboolean(ini, "Game:enableControllerDebugging", false);
         customSettings.disableFocusPause         = iniparser_getboolean(ini, "Game:disableFocusPause", false);
 #if RETRO_USERCORE_DUMMY
-        customSettings.dlcEnabled                = iniparser_getboolean(ini, "Game:dlcEnabled", false);
+        customSettings.dlcEnabled = iniparser_getboolean(ini, "Game:dlcEnabled", false);
 #endif
+        engine.fastForwardSpeed = iniparser_getint(ini, "Game:fastForwardSpeed", 8);
 
 #if RETRO_REV0U
         customSettings.forceScripts = iniparser_getboolean(ini, "Game:txtScripts", false);
@@ -572,13 +573,16 @@ void RSDK::LoadSettingsINI()
 
 void RSDK::SaveSettingsINI(bool32 writeToFile)
 {
-    // only done on windows and "dev", consoles use "options.bin"
+    // the original only saves this file on windows and "dev", consoles use "options.bin"
+    // for the decomp, however, we want to save it regardless of platform
+#if RETRO_USE_ORIGINAL_CODE
 #if RETRO_REV02
     if (SKU::curSKU.platform != PLATFORM_PC && SKU::curSKU.platform != PLATFORM_DEV)
         return;
 #else
     if (gameVerInfo.platform != PLATFORM_PC && gameVerInfo.platform != PLATFORM_DEV)
         return;
+#endif
 #endif
 
     if (changedVideoSettings || writeToFile) {
@@ -618,6 +622,9 @@ void RSDK::SaveSettingsINI(bool32 writeToFile)
 
             WriteText(file, "; Determines if the engine should pause when window focus is lost or not\n");
             WriteText(file, "disableFocusPause=%s\n", (customSettings.disableFocusPause ? "y" : "n"));
+
+            WriteText(file, "; The speed to run the game at while holding backspace. Defaults to x8 speed\n");
+            WriteText(file, "fastForwardSpeed=%d\n", engine.fastForwardSpeed);
 
             if (strcmp(iniparser_getstring(ini, "Game:username", ";unknown;"), ";unknown;") != 0)
                 WriteText(file, "username=%s\n", iniparser_getstring(ini, "Game:username", ""));

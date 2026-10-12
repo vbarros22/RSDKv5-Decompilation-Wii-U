@@ -29,17 +29,18 @@ inline void PrintConsole(const char *message) { printf("%s", message); }
 
 void RSDK::PrintLog(int32 mode, const char *message, ...)
 {
-#ifndef RETRO_DISABLE_LOG
+#if !RETRO_DISABLE_LOG
     if (engineDebugMode) {
         // make the full string
+        char tmpStr[0x400];
         va_list args;
         va_start(args, message);
 
-        vsnprintf(outputString, sizeof(outputString), message, args);
+        vsnprintf(tmpStr, sizeof(tmpStr), message, args);
         if (useEndLine)
-            sprintf(outputString, "%.*s\n", (int32)sizeof(outputString) - 1, outputString);
+            sprintf(outputString, "%.*s\n", (int32)sizeof(tmpStr) - 1, tmpStr);
         else
-            sprintf(outputString, "%.*s", (int32)sizeof(outputString) - 1, outputString);
+            sprintf(outputString, "%.*s", (int32)sizeof(tmpStr) - 1, tmpStr);
         va_end(args);
 
 #if RETRO_REV02
@@ -528,6 +529,15 @@ void RSDK::DevMenu_MainMenu()
             default: break;
         }
     }
+#if !RETRO_USE_ORIGINAL_CODE
+#if RETRO_REV02
+    else if (SKU::userCore->GetConfirmButtonFlip() ? controller[CONT_ANY].keyA.press : controller[CONT_ANY].keyB.press) {
+#else
+    else if (SKU::GetConfirmButtonFlip() ? controller[CONT_ANY].keyA.press : controller[CONT_ANY].keyB.press) {
+#endif
+        CloseDevMenu();
+    }
+#endif
 }
 void RSDK::DevMenu_CategorySelectMenu()
 {
@@ -1831,7 +1841,7 @@ void RSDK::DevMenu_ModsMenu()
     int32 y = dy + 40;
     for (int32 i = 0; i < 8; ++i) {
         if (devMenu.scrollPos + i < modList.size()) {
-            DrawDevString(modList[(devMenu.scrollPos + i)].id.c_str(), currentScreen->center.x - 96, y, ALIGN_LEFT, selectionColors[i]);
+            DrawDevString(modList[(devMenu.scrollPos + i)].name.c_str(), currentScreen->center.x - 96, y, ALIGN_LEFT, selectionColors[i]);
             DrawDevString(modList[(devMenu.scrollPos + i)].active ? "Y" : "N", currentScreen->center.x + 96, y, ALIGN_RIGHT, selectionColors[i]);
 
             y += 8;

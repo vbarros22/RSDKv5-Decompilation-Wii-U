@@ -161,7 +161,7 @@ bool32 RSDK::Legacy::v4::LoadGameConfig(const char *filepath)
                 ReadInt8(&info);
             }
 
-            category->sceneOffsetEnd = category->sceneOffsetStart + category->sceneCount;
+            category->sceneOffsetEnd = category->sceneOffsetStart + category->sceneCount - 1;
             sceneID += category->sceneCount;
         }
 
@@ -175,11 +175,7 @@ bool32 RSDK::Legacy::v4::LoadGameConfig(const char *filepath)
         SetGlobalVariableByName("engine.standalone", 0);
 #endif
 
-#if !RSDK_AUTOBUILD
-        SetGlobalVariableByName("game.hasPlusDLC", 1);
-#else
-        SetGlobalVariableByName("game.hasPlusDLC", 0);
-#endif
+        SetGlobalVariableByName("game.hasPlusDLC", !RSDK_AUTOBUILD);
 
         usingBytecode = false;
         InitFileInfo(&info);

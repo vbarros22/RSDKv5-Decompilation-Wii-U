@@ -261,7 +261,7 @@ bool32 RSDK::CheckObjectCollisionTouch(Entity *thisEntity, Hitbox *thisHitbox, E
 #if !RETRO_USE_ORIGINAL_CODE
     if (showHitboxes) {
         int32 thisHitboxID  = RSDK::AddDebugHitbox(H_TYPE_TOUCH, thisEntity->direction, thisEntity, thisHitbox);
-        int32 otherHitboxID = RSDK::AddDebugHitbox(H_TYPE_TOUCH, thisEntity->direction, otherEntity, otherHitbox);
+        int32 otherHitboxID = RSDK::AddDebugHitbox(H_TYPE_TOUCH, otherEntity->direction, otherEntity, otherHitbox);
 
         if (thisHitboxID >= 0 && collided)
             debugHitboxList[thisHitboxID].collision |= 1 << (collided - 1);
@@ -332,7 +332,7 @@ uint8 RSDK::CheckObjectCollisionBox(Entity *thisEntity, Hitbox *thisHitbox, Enti
     otherHitbox->right--;
     otherHitbox->bottom++;
 
-    if (otherIY <= thisIY + ((thisHitbox->top + thisHitbox->bottom) >> 1)) {
+    if (otherIY < (thisHitbox->top + thisHitbox->bottom + 2 * thisIY) >> 1) {
         if (otherIY + otherHitbox->bottom >= thisIY + thisHitbox->top && thisIX + thisHitbox->left < otherIX + otherHitbox->right
             && thisIX + thisHitbox->right > otherIX + otherHitbox->left) {
             collisionSideV = C_TOP;
@@ -475,7 +475,7 @@ uint8 RSDK::CheckObjectCollisionBox(Entity *thisEntity, Hitbox *thisHitbox, Enti
 #if !RETRO_USE_ORIGINAL_CODE
     if (showHitboxes) {
         int32 thisHitboxID  = RSDK::AddDebugHitbox(H_TYPE_BOX, thisEntity->direction, thisEntity, thisHitbox);
-        int32 otherHitboxID = RSDK::AddDebugHitbox(H_TYPE_BOX, thisEntity->direction, otherEntity, otherHitbox);
+        int32 otherHitboxID = RSDK::AddDebugHitbox(H_TYPE_BOX, otherEntity->direction, otherEntity, otherHitbox);
 
         if (thisHitboxID >= 0 && side)
             debugHitboxList[thisHitboxID].collision |= 1 << (side - 1);
@@ -588,7 +588,7 @@ bool32 RSDK::CheckObjectCollisionPlatform(Entity *thisEntity, Hitbox *thisHitbox
 #if !RETRO_USE_ORIGINAL_CODE
     if (showHitboxes) {
         int32 thisHitboxID  = RSDK::AddDebugHitbox(H_TYPE_PLAT, thisEntity->direction, thisEntity, thisHitbox);
-        int32 otherHitboxID = RSDK::AddDebugHitbox(H_TYPE_PLAT, thisEntity->direction, otherEntity, otherHitbox);
+        int32 otherHitboxID = RSDK::AddDebugHitbox(H_TYPE_PLAT, otherEntity->direction, otherEntity, otherHitbox);
 #if RETRO_REV0U
         if (otherEntity->tileCollisions == TILECOLLISION_UP) {
 

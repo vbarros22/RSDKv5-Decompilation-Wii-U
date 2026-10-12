@@ -215,7 +215,7 @@ void RSDK::SortMods()
         }
     }
 
-    std::stable_sort(modList.begin(), modList.end(), [](ModInfo a, ModInfo b) {
+    std::stable_sort(modList.begin(), modList.end(), [](const ModInfo &a, const ModInfo &b) {
         if (!(a.active && b.active))
             return a.active;
         // keep it unsorted i guess
@@ -428,7 +428,7 @@ bool32 RSDK::ScanModFolder(ModInfo *info, const char *targetFile, bool32 fromLoa
                     RenderDevice::FlipScreen();
                 }
             }
-        } catch (fs::filesystem_error fe) {
+        } catch (fs::filesystem_error &fe) {
             PrintLog(PRINT_ERROR, "Mod File Scanning Error: %s", fe.what());
         }
     }
@@ -572,7 +572,7 @@ void RSDK::LoadMods(bool newOnly, bool32 getVersion)
                     }
                 }
             }
-        } catch (fs::filesystem_error fe) {
+        } catch (fs::filesystem_error &fe) {
             PrintLog(PRINT_ERROR, "Mods folder scanning error: %s", fe.what());
         }
     }
@@ -587,7 +587,7 @@ void RSDK::LoadMods(bool newOnly, bool32 getVersion)
     LoadModSettings();
 }
 
-void loadCfg(ModInfo *info, std::string path)
+void loadCfg(ModInfo *info, const std::string &path)
 {
     FileInfo cfg;
     InitFileInfo(&cfg);
@@ -621,7 +621,7 @@ void loadCfg(ModInfo *info, std::string path)
     }
 }
 
-bool32 RSDK::LoadMod(ModInfo *info, std::string modsPath, std::string folder, bool32 active, bool32 getVersion)
+bool32 RSDK::LoadMod(ModInfo *info, const std::string &modsPath, const std::string &folder, bool32 active, bool32 getVersion)
 {
     if (!info)
         return false;
@@ -705,7 +705,7 @@ bool32 RSDK::LoadMod(ModInfo *info, std::string modsPath, std::string folder, bo
                 std::string buf;
                 while (std::getline(stream, buf, ',')) {
                     buf = trim(buf);
-                    DrawStatus(("Starting logic" + buf + "...").c_str());
+                    DrawStatus(("Starting logic " + buf + "...").c_str());
                     bool linked = false;
 
                     fs::path file(modDir + "/" + buf);
@@ -771,8 +771,8 @@ bool32 RSDK::LoadMod(ModInfo *info, std::string modsPath, std::string folder, bo
 
                 fClose(set);
                 using namespace std;
-                auto modSettingsIni  = iniparser_load((modDir + "/modSettings.ini").c_str());
-                int32 sec = iniparser_getnsec(modSettingsIni);
+                auto modSettingsIni = iniparser_load((modDir + "/modSettings.ini").c_str());
+                int32 sec           = iniparser_getnsec(modSettingsIni);
                 if (sec) {
                     for (int32 i = 0; i < sec; ++i) {
                         const char *secn  = iniparser_getsecname(modSettingsIni, i);
@@ -789,7 +789,8 @@ bool32 RSDK::LoadMod(ModInfo *info, std::string modsPath, std::string folder, bo
                 else {
                     // either you use categories or you don't, i don't make the rules
                     map<string, string> secset;
-                    for (int32 j = 0; j < modSettingsIni->n; ++j) secset.insert(pair<string, string>(modSettingsIni->key[j] + 1, modSettingsIni->val[j]));
+                    for (int32 j = 0; j < modSettingsIni->n; ++j)
+                        secset.insert(pair<string, string>(modSettingsIni->key[j] + 1, modSettingsIni->val[j]));
                     info->settings.insert(pair<string, map<string, string>>("", secset));
                 }
                 iniparser_freedict(modSettingsIni);
@@ -838,8 +839,8 @@ bool32 RSDK::LoadMod(ModInfo *info, std::string modsPath, std::string folder, bo
                             saveCfg = true;
                             fClose(set);
                             using namespace std;
-                            auto cfgIni  = iniparser_load(file.string().c_str());
-                            int32 sec = iniparser_getnsec(cfgIni);
+                            auto cfgIni = iniparser_load(file.string().c_str());
+                            int32 sec   = iniparser_getnsec(cfgIni);
                             for (int32 i = 0; i < sec; ++i) {
                                 const char *secn  = iniparser_getsecname(cfgIni, i);
                                 int32 len         = iniparser_getsecnkeys(cfgIni, secn);
@@ -1218,9 +1219,9 @@ void RSDK::GetSettingsString(const char *id, const char *key, String *result, co
 
     std::string v = GetModSettingsValue(id, key);
     if (!v.length()) {
+        InitString(result, fallback, 0);
         if (currentMod->id == id)
             SetSettingsString(key, result);
-        InitString(result, fallback, 0);
         return;
     }
     InitString(result, v.c_str(), 0);
@@ -1512,7 +1513,7 @@ bool32 RSDK::ForeachSetting(const char *id, String *setting)
 }
 #endif
 
-void SetModSettingsValue(const char *key, std::string val)
+void SetModSettingsValue(const char *key, const std::string &val)
 {
     if (!currentMod)
         return;
@@ -1531,7 +1532,7 @@ void RSDK::SetSettingsInteger(const char *key, int32 val) { SetModSettingsValue(
 void RSDK::SetSettingsFloat(const char *key, float val) { SetModSettingsValue(key, std::to_string(val)); }
 void RSDK::SetSettingsString(const char *key, String *val)
 {
-    char *buf = new char[val->length];
+    char *buf = new char[val->length + 1]; // Take into account '\0'
     GetCString(buf, val);
     SetModSettingsValue(key, buf);
     delete[] buf;
@@ -1616,14 +1617,14 @@ void SuperInternal(RSDK::ObjectClass *super, RSDK::ModSuper callback, void *data
                 super->stageLoad();
             break;
 
-        case SUPER_EDITORDRAW:
-            if (super->editorDraw)
-                super->editorDraw();
-            break;
-
         case SUPER_EDITORLOAD:
             if (super->editorLoad)
                 super->editorLoad();
+            break;
+
+        case SUPER_EDITORDRAW:
+            if (super->editorDraw)
+                super->editorDraw();
             break;
 
         case SUPER_SERIALIZE:
@@ -1666,33 +1667,33 @@ void RSDK::ModRegisterGlobalVariables(const char *globalsPath, void **globals, u
 #if RETRO_REV0U
 void RSDK::ModRegisterObject(Object **staticVars, Object **modStaticVars, const char *name, uint32 entityClassSize, uint32 staticClassSize,
                              uint32 modClassSize, void (*update)(), void (*lateUpdate)(), void (*staticUpdate)(), void (*draw)(),
-                             void (*create)(void *), void (*stageLoad)(), void (*editorDraw)(), void (*editorLoad)(), void (*serialize)(),
+                             void (*create)(void *), void (*stageLoad)(), void (*editorLoad)(), void (*editorDraw)(), void (*serialize)(),
                              void (*staticLoad)(Object *), const char *inherited)
 {
     return ModRegisterObject_STD(staticVars, modStaticVars, name, entityClassSize, staticClassSize, modClassSize, update, lateUpdate, staticUpdate,
-                                 draw, create, stageLoad, editorDraw, editorLoad, serialize, staticLoad, inherited);
+                                 draw, create, stageLoad, editorLoad, editorDraw, serialize, staticLoad, inherited);
 }
 
 void RSDK::ModRegisterObject_STD(Object **staticVars, Object **modStaticVars, const char *name, uint32 entityClassSize, uint32 staticClassSize,
                                  uint32 modClassSize, std::function<void()> update, std::function<void()> lateUpdate,
                                  std::function<void()> staticUpdate, std::function<void()> draw, std::function<void(void *)> create,
-                                 std::function<void()> stageLoad, std::function<void()> editorDraw, std::function<void()> editorLoad,
+                                 std::function<void()> stageLoad, std::function<void()> editorLoad, std::function<void()> editorDraw,
                                  std::function<void()> serialize, std::function<void(Object *)> staticLoad, const char *inherited)
 #else
 
 void RSDK::ModRegisterObject(Object **staticVars, Object **modStaticVars, const char *name, uint32 entityClassSize, uint32 staticClassSize,
                              uint32 modClassSize, void (*update)(), void (*lateUpdate)(), void (*staticUpdate)(), void (*draw)(),
-                             void (*create)(void *), void (*stageLoad)(), void (*editorDraw)(), void (*editorLoad)(), void (*serialize)(),
+                             void (*create)(void *), void (*stageLoad)(), void (*editorLoad)(), void (*editorDraw)(), void (*serialize)(),
                              const char *inherited)
 {
     return ModRegisterObject_STD(staticVars, modStaticVars, name, entityClassSize, staticClassSize, modClassSize, update, lateUpdate, staticUpdate,
-                                 draw, create, stageLoad, editorDraw, editorLoad, serialize, inherited);
+                                 draw, create, stageLoad, editorLoad, editorDraw, serialize, inherited);
 }
 
 void RSDK::ModRegisterObject_STD(Object **staticVars, Object **modStaticVars, const char *name, uint32 entityClassSize, uint32 staticClassSize,
                                  uint32 modClassSize, std::function<void()> update, std::function<void()> lateUpdate,
                                  std::function<void()> staticUpdate, std::function<void()> draw, std::function<void(void *)> create,
-                                 std::function<void()> stageLoad, std::function<void()> editorDraw, std::function<void()> editorLoad,
+                                 std::function<void()> stageLoad, std::function<void()> editorLoad, std::function<void()> editorDraw,
                                  std::function<void()> serialize, const char *inherited)
 #endif
 {
@@ -1756,8 +1757,8 @@ void RSDK::ModRegisterObject_STD(Object **staticVars, Object **modStaticVars, co
 #if RETRO_REV0U
     if (staticLoad)   info->staticLoad   = [curMod, staticLoad](Object *staticVars) { currentMod = curMod; staticLoad(staticVars);  currentMod = NULL; };
 #endif
-    if (editorDraw)   info->editorDraw   = [curMod, editorDraw]()                   { currentMod = curMod; editorDraw();            currentMod = NULL; };
     if (editorLoad)   info->editorLoad   = [curMod, editorLoad]()                   { currentMod = curMod; editorLoad();            currentMod = NULL; };
+    if (editorDraw)   info->editorDraw   = [curMod, editorDraw]()                   { currentMod = curMod; editorDraw();            currentMod = NULL; };
     if (serialize)    info->serialize    = [curMod, serialize]()                    { currentMod = curMod; serialize();             currentMod = NULL; };
     // clang-format on
 
@@ -1789,8 +1790,8 @@ void RSDK::ModRegisterObject_STD(Object **staticVars, Object **modStaticVars, co
         // Don't inherit staticLoad, that should be per-struct
         // if (!staticLoad)   info->staticLoad   = [curMod, info](Object *staticVars)  { currentMod = curMod; SuperInternal(info, SUPER_STATICLOAD, staticVars);  currentMod = NULL; };
 #endif
-        if (!editorDraw)   info->editorDraw   = [curMod, info]()                    { currentMod = curMod; SuperInternal(info, SUPER_EDITORDRAW, NULL);        currentMod = NULL; };
         if (!editorLoad)   info->editorLoad   = [curMod, info]()                    { currentMod = curMod; SuperInternal(info, SUPER_EDITORLOAD, NULL);        currentMod = NULL; };
+        if (!editorDraw)   info->editorDraw   = [curMod, info]()                    { currentMod = curMod; SuperInternal(info, SUPER_EDITORDRAW, NULL);        currentMod = NULL; };
         if (!serialize)    info->serialize    = [curMod, info]()                    { currentMod = curMod; SuperInternal(info, SUPER_SERIALIZE, NULL);         currentMod = NULL; };
         // clang-format on
     }
@@ -1847,7 +1848,7 @@ int32 RSDK::GetAchievementIndexByID(const char *id)
 }
 int32 RSDK::GetAchievementCount() { return (int32)achievementList.size(); }
 
-void RSDK::StateMachineRun(void (*state)())
+void RSDK::StateMachineRun(void (*state)(void))
 {
     bool32 skipState = false;
 
@@ -1865,7 +1866,7 @@ void RSDK::StateMachineRun(void (*state)())
     }
 }
 
-bool32 RSDK::HandleRunState_HighPriority(void *state)
+bool32 RSDK::HandleRunState_HighPriority(void (*state)(void))
 {
     bool32 skipState = false;
 
@@ -1877,7 +1878,7 @@ bool32 RSDK::HandleRunState_HighPriority(void *state)
     return skipState;
 }
 
-void RSDK::HandleRunState_LowPriority(void *state, bool32 skipState)
+void RSDK::HandleRunState_LowPriority(void (*state)(void), bool32 skipState)
 {
     for (int32 h = 0; h < (int32)stateHookList.size(); ++h) {
         if (!stateHookList[h].priority && stateHookList[h].state == state && stateHookList[h].hook)
@@ -1885,7 +1886,7 @@ void RSDK::HandleRunState_LowPriority(void *state, bool32 skipState)
     }
 }
 
-void RSDK::RegisterStateHook(void (*state)(), bool32 (*hook)(bool32 skippedState), bool32 priority)
+void RSDK::RegisterStateHook(void (*state)(void), bool32 (*hook)(bool32 skippedState), bool32 priority)
 {
     if (!state)
         return;
