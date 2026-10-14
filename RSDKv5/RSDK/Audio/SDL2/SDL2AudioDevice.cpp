@@ -12,7 +12,7 @@ bool32 AudioDevice::Init()
         InitAudioChannels();
     }
 
-    SDL_AudioSpec want;
+    SDL_AudioSpec want = {};
     want.freq     = AUDIO_FREQUENCY;
     want.format   = AUDIO_S16SYS;
     want.samples  = MIX_BUFFER_SIZE / AUDIO_CHANNELS;
