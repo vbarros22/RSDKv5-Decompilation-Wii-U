@@ -5,6 +5,34 @@ SDL_Texture *RenderDevice::screenTexture[SCREEN_COUNT];
 
 SDL_Texture *RenderDevice::imageTexture = nullptr;
 
+#if RETRO_SDL2_SCREEN_FILTERS
+SDL_Texture *RenderDevice::scanlineTexture[2] = { nullptr, nullptr };
+
+// Emulated screen filters. These are NOT the original shaders (SDL_Renderer has no way to run
+// them), but approximations built from what it can do on the GPU:
+//   0 "None"        -> nearest-neighbour upscale (Sharp)
+//   1 "Clean"       -> bilinear upscale (Smooth)
+//   2 "CRT-Yeetron" -> bilinear upscale + light scanlines
+//   3 "CRT-Yee64"   -> bilinear upscale + strong scanlines
+enum SDL2ScreenFilterIDs {
+    SDL2_FILTER_NONE,
+    SDL2_FILTER_CLEAN,
+    SDL2_FILTER_CRT_LIGHT,
+    SDL2_FILTER_CRT_STRONG,
+    SDL2_FILTER_COUNT,
+};
+
+// Each game pixel row is split into this many overlay rows. 3 maps 1:1 onto 720p output.
+#define SCANLINE_SUBROWS  (3)
+#define SCANLINE_TEXTURE_W (16)
+
+// Brightness (0-255) of each overlay row inside one game pixel row; multiplied with the image.
+static const uint8 scanlinePatterns[2][SCANLINE_SUBROWS] = {
+    { 0xFF, 0xFF, 0xC0 }, // light
+    { 0xFF, 0xE8, 0x90 }, // strong
+};
+#endif
+
 uint32 RenderDevice::displayModeIndex = 0;
 int32 RenderDevice::displayModeCount  = 0;
 
@@ -112,6 +140,13 @@ void RenderDevice::FlipScreen()
     // pillarboxes in fullscreen from displaying garbage data.
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0xFF);
     SDL_RenderClear(renderer);
+
+#if RETRO_SDL2_SCREEN_FILTERS
+    if (lastShaderID != videoSettings.shaderID) {
+        lastShaderID = videoSettings.shaderID;
+        ApplyScreenFilter();
+    }
+#endif
 
 #if (SDL_COMPILEDVERSION >= SDL_VERSIONNUM(2, 0, 18))
     int32 startVert = 0;
@@ -296,6 +331,10 @@ void RenderDevice::FlipScreen()
 #endif
     }
 #endif
+#if RETRO_SDL2_SCREEN_FILTERS
+    DrawScanlines();
+#endif
+
     if (dimAmount < 1.0f) {
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0xFF - (dimAmount * 0xFF));
         SDL_RenderFillRect(renderer, NULL);
@@ -315,6 +354,14 @@ void RenderDevice::Release(bool32 isRefresh)
     if (imageTexture)
         SDL_DestroyTexture(imageTexture);
     imageTexture = NULL;
+
+#if RETRO_SDL2_SCREEN_FILTERS
+    for (int32 t = 0; t < 2; ++t) {
+        if (scanlineTexture[t])
+            SDL_DestroyTexture(scanlineTexture[t]);
+        scanlineTexture[t] = NULL;
+    }
+#endif
 
     if (!isRefresh) {
         if (displayInfo.displays)
@@ -541,6 +588,12 @@ bool RenderDevice::InitGraphicsAPI()
         return false;
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "nearest");
 
+#if RETRO_SDL2_SCREEN_FILTERS
+    // Not fatal: without them the CRT filters just fall back to plain bilinear.
+    if (!CreateScanlineTextures())
+        PrintLog(PRINT_NORMAL, "WARNING: failed to create scanline textures, CRT filters will look like 'Clean'.");
+#endif
+
     lastShaderID = -1;
     InitVertexBuffer();
     engine.inFocus          = 1;
@@ -551,6 +604,138 @@ bool RenderDevice::InitGraphicsAPI()
 
     return true;
 }
+
+#if RETRO_SDL2_SCREEN_FILTERS
+bool RenderDevice::CreateScanlineTextures()
+{
+    // One overlay row group per row of the screen texture, so the overlay can reuse the
+    // screen quads' texture coordinates and stays aligned with the game's pixel rows.
+    const int32 rows   = (int32)textureSize.y;
+    const int32 height = rows * SCANLINE_SUBROWS;
+
+    uint32 *pixels = (uint32 *)malloc(SCANLINE_TEXTURE_W * height * sizeof(uint32));
+    if (!pixels)
+        return false;
+
+    bool success = true;
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear"); // soft scanline edges at non-integer scales
+    for (int32 t = 0; t < 2 && success; ++t) {
+        for (int32 y = 0; y < height; ++y) {
+            const uint32 v     = scanlinePatterns[t][y % SCANLINE_SUBROWS];
+            const uint32 pixel = 0xFF000000 | (v << 16) | (v << 8) | v;
+            for (int32 x = 0; x < SCANLINE_TEXTURE_W; ++x) pixels[y * SCANLINE_TEXTURE_W + x] = pixel;
+        }
+
+        scanlineTexture[t] = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STATIC, SCANLINE_TEXTURE_W, height);
+        success            = scanlineTexture[t] != NULL;
+        if (success) {
+            SDL_UpdateTexture(scanlineTexture[t], NULL, pixels, SCANLINE_TEXTURE_W * sizeof(uint32));
+            // MOD: result = image * overlay, i.e. darkens the image row by row.
+            success = SDL_SetTextureBlendMode(scanlineTexture[t], SDL_BLENDMODE_MOD) == 0;
+        }
+    }
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "nearest");
+
+    free(pixels);
+
+    if (!success) {
+        for (int32 t = 0; t < 2; ++t) {
+            if (scanlineTexture[t])
+                SDL_DestroyTexture(scanlineTexture[t]);
+            scanlineTexture[t] = NULL;
+        }
+    }
+
+    return success;
+}
+
+void RenderDevice::ApplyScreenFilter()
+{
+#if (SDL_COMPILEDVERSION >= SDL_VERSIONNUM(2, 0, 12))
+    const int32 filter      = videoSettings.shaderID;
+    const SDL_ScaleMode mode = (filter > SDL2_FILTER_NONE && filter < shaderCount && shaderList[filter].linear) ? SDL_ScaleModeLinear : SDL_ScaleModeNearest;
+
+    for (int32 s = 0; s < SCREEN_COUNT; ++s) {
+        if (screenTexture[s])
+            SDL_SetTextureScaleMode(screenTexture[s], mode);
+    }
+#endif
+}
+
+int32 RenderDevice::GetScreenStartVerts(int32 *startVerts)
+{
+    // Must match the quads FlipScreen draws for each screen count.
+    switch (videoSettings.screenCount) {
+        default: return 0;
+
+        case 1: startVerts[0] = 0; return 1;
+
+        case 2:
+#if RETRO_REV02
+            startVerts[0] = startVertex_2P[0];
+            startVerts[1] = startVertex_2P[1];
+#else
+            startVerts[0] = 6;
+            startVerts[1] = 12;
+#endif
+            return 2;
+
+#if RETRO_REV02
+        case 3:
+            startVerts[0] = startVertex_3P[0];
+            startVerts[1] = startVertex_3P[1];
+            startVerts[2] = startVertex_3P[2];
+            return 3;
+
+        case 4:
+            startVerts[0] = 30;
+            startVerts[1] = 36;
+            startVerts[2] = 42;
+            startVerts[3] = 48;
+            return 4;
+#endif
+    }
+}
+
+void RenderDevice::DrawScanlines()
+{
+    SDL_Texture *overlay = NULL;
+    if (videoSettings.shaderID == SDL2_FILTER_CRT_LIGHT)
+        overlay = scanlineTexture[0];
+    else if (videoSettings.shaderID == SDL2_FILTER_CRT_STRONG)
+        overlay = scanlineTexture[1];
+
+    // No overlay over videos/still images (screenCount 0) or when the textures are missing.
+    if (!overlay)
+        return;
+
+    int32 startVerts[4];
+    const int32 count = GetScreenStartVerts(startVerts);
+
+    for (int32 i = 0; i < count; ++i) {
+        const int32 startVert = startVerts[i];
+
+#if (SDL_COMPILEDVERSION >= SDL_VERSIONNUM(2, 0, 18))
+        // Same quad and texture coordinates as the screen itself: the overlay has
+        // SCANLINE_SUBROWS rows for each screen texture row, so they line up exactly.
+        SDL_RenderGeometryRaw(renderer, overlay, &vertexBuffer[startVert].pos.x, sizeof(RenderVertex),
+                              (SDL_Color *)&vertexBuffer[startVert].color, sizeof(RenderVertex), &vertexBuffer[startVert].tex.x,
+                              sizeof(RenderVertex), 6, NULL, 0, 0);
+#else
+        SDL_Rect src, dst;
+        dst.x = vertexBuffer[startVert].pos.x;
+        dst.y = vertexBuffer[startVert].pos.y;
+        dst.w = vertexBuffer[startVert + 2].pos.x - dst.x;
+        dst.h = vertexBuffer[startVert + 2].pos.y - dst.y;
+        src.x = 0;
+        src.w = SCANLINE_TEXTURE_W;
+        src.y = vertexBuffer[startVert].tex.y * textureSize.y * SCANLINE_SUBROWS;
+        src.h = vertexBuffer[startVert + 2].tex.y * textureSize.y * SCANLINE_SUBROWS - src.y;
+        SDL_RenderCopy(renderer, overlay, &src, &dst);
+#endif
+    }
+}
+#endif
 
 void RenderDevice::LoadShader(const char *fileName, bool32 linear) { PrintLog(PRINT_NORMAL, "This render device does not support shaders!"); }
 
@@ -581,11 +766,27 @@ bool RenderDevice::InitShaders()
         maxShaders = shaderCount;
     }
     else {
+#if RETRO_SDL2_SCREEN_FILTERS
+        // Expose the emulated filters under the stock names so the game's filter option works.
+        static const char *filterNames[SDL2_FILTER_COUNT] = { "None", "Clean", "CRT-Yeetron", "CRT-Yee64" };
+
+        for (int32 s = 0; s < SDL2_FILTER_COUNT; ++s) {
+            sprintf_s(shaderList[s].name, sizeof(shaderList[s].name), "%s", filterNames[s]);
+            shaderList[s].linear = s != SDL2_FILTER_NONE;
+        }
+
+        shaderCount = SDL2_FILTER_COUNT;
+        maxShaders  = SDL2_FILTER_COUNT;
+#if RETRO_USE_MOD_LOADER
+        userShaderCount = SDL2_FILTER_COUNT;
+#endif
+#else
         for (int32 s = 0; s < SHADER_COUNT; ++s) shaderList[s].linear = true;
 
         shaderList[0].linear = videoSettings.windowed ? false : shaderList[0].linear;
         maxShaders           = 1;
         shaderCount          = 1;
+#endif
     }
 
     videoSettings.shaderID = videoSettings.shaderID >= maxShaders ? 0 : videoSettings.shaderID;

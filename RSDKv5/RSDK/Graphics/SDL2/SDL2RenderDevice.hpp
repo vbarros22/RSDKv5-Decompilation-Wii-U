@@ -1,5 +1,12 @@
 using ShaderEntry = ShaderEntryBase;
 
+// SDL_Renderer can't run custom shaders, so this device can emulate the stock screen filters
+// with plain GPU operations instead (texture filtering + a multiplied scanline overlay).
+// On by default for the Wii U, where this renderer is the only one available.
+#ifndef RETRO_SDL2_SCREEN_FILTERS
+#define RETRO_SDL2_SCREEN_FILTERS (RETRO_PLATFORM == RETRO_WIIU)
+#endif
+
 class RenderDevice : public RenderDeviceBase
 {
 public:
@@ -58,12 +65,24 @@ public:
 
     static SDL_Texture *imageTexture;
 
+#if RETRO_SDL2_SCREEN_FILTERS
+    // [0] = light scanlines (CRT-Yeetron), [1] = strong scanlines (CRT-Yee64)
+    static SDL_Texture *scanlineTexture[2];
+#endif
+
 private:
     static bool SetupRendering();
     static void InitVertexBuffer();
     static bool InitGraphicsAPI();
 
     static void GetDisplays();
+
+#if RETRO_SDL2_SCREEN_FILTERS
+    static bool CreateScanlineTextures();
+    static void ApplyScreenFilter();
+    static void DrawScanlines();
+    static int32 GetScreenStartVerts(int32 *startVerts);
+#endif
 
     static void ProcessEvent(SDL_Event event);
 
