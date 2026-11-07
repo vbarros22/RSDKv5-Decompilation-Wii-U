@@ -38,7 +38,7 @@ void RSDK::PrintLog(int32 mode, const char *message, ...)
 
         vsnprintf(tmpStr, sizeof(tmpStr), message, args);
         if (useEndLine)
-            sprintf(outputString, "%.*s\n", (int32)sizeof(tmpStr) - 1, tmpStr);
+            sprintf(outputString, "%.*s\n", (int32)sizeof(tmpStr) - 2, tmpStr);
         else
             sprintf(outputString, "%.*s", (int32)sizeof(tmpStr) - 1, tmpStr);
         va_end(args);
@@ -108,7 +108,7 @@ void RSDK::PrintLog(int32 mode, const char *message, ...)
         sprintf_s(logPath, sizeof(logPath), "%slog.txt", SKU::userFileDir);
         FileIO *file = fOpen(logPath, "a");
         if (file) {
-            fWrite(&outputString, 1, strlen(outputString), file);
+            fWrite(outputString, 1, strlen(outputString), file);
             fClose(file);
         }
 #endif
@@ -317,8 +317,57 @@ void RSDK::CloseDevMenu()
     sceneInfo.state           = devMenu.sceneState;
 #endif
 
+#if RETRO_USE_MOD_LOADER
+    if (devMenu.modMenuCalled) {
+        devMenu.modMenuCalled = false;
+
+        if (!CheckValidScene()) {
+            sceneInfo.activeCategory = 0;
+            sceneInfo.listPos        = 0;
+        }
+
+#if RETRO_REV0U
+        switch (engine.version) {
+            default: break;
+            case 5: LoadScene(); break;
+            case 4:
+            case 3:
+                RSDK::Legacy::ResetCurrentStageFolder();
+                RSDK::Legacy::stageMode = RSDK::Legacy::STAGEMODE_LOAD;
+                break;
+        }
+#else
+        LoadScene();
+#endif
+    }
+#endif
+
     ResumeSound();
 }
+
+#if RETRO_USE_MOD_LOADER
+void RSDK::OpenModMenu()
+{
+    LoadMods(true); // reload our mod list real quick
+    if (modList.size() != 0) {
+        OpenDevMenu();
+        devMenu.state         = DevMenu_ModsMenu;
+        devMenu.modMenuCalled = true;
+    }
+    else {
+#if RETRO_REV0U
+        switch (engine.version) {
+            default: break;
+            case 5: LoadScene(); break;
+            case 4:
+            case 3: RSDK::Legacy::stageMode = RSDK::Legacy::STAGEMODE_LOAD; break;
+        }
+#else
+        LoadScene();
+#endif
+    }
+}
+#endif
 
 void RSDK::DevMenu_MainMenu()
 {
@@ -1951,6 +2000,9 @@ void RSDK::DevMenu_ModsMenu()
             engine.version = devMenu.startingVersion;
         }
 #endif
+
+        if (devMenu.modMenuCalled)
+            CloseDevMenu();
     }
 }
 #endif
