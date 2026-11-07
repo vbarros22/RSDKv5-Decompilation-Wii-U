@@ -2,7 +2,16 @@
 
 #if RETRO_PLATFORM == RETRO_WIIU
 #include <array>
-#include <nn/act.h> 
+#include <type_traits>
+#include <nn/act.h>
+
+// wut has declared GetMiiName's buffer as int16_t* or char16_t* depending on the version.
+// Deduce the parameter type so this builds with either, and check it is a 16-bit unit.
+template <typename R, typename T> static T *MiiNameBuffer(R (*)(T *), uint16 *buffer)
+{
+    static_assert(sizeof(T) == sizeof(uint16), "Unexpected Mii name character size");
+    return reinterpret_cast<T *>(buffer);
+}
 #endif
 
 int32 DummyUserStorage::TryAuth()
@@ -35,25 +44,34 @@ int32 DummyUserStorage::TryInitStorage()
 bool32 DummyUserStorage::GetUsername(String *name)
 {
 #if RETRO_PLATFORM == RETRO_WIIU
-    std::array<int16_t, nn::act::MiiNameSize> miiName;
+    // A username set in Settings.ini wins; otherwise use the console's Mii name.
+    if (strlen(customSettings.username) > 0) {
+        InitString(name, customSettings.username, 0);
+        return true;
+    }
+
+    std::array<uint16, nn::act::MiiNameSize> miiName = {};
 
     nn::act::Initialize();
-    const nn::Result result = nn::act::GetMiiName(miiName.data());
+    const nn::Result result = nn::act::GetMiiName(MiiNameBuffer(&nn::act::GetMiiName, miiName.data()));
+    nn::act::Finalize();
 
-    if (result.IsSuccess()) {
-        std::array<char, nn::act::MiiNameSize + 1> userName;
-        for (std::size_t i = 0; i < miiName.size(); ++i) {
-            userName[i] = static_cast<char>(miiName[i]);
-        }
-        userName.back() = '\0';
+    int32 length = 0;
+    while (length < (int32)miiName.size() && miiName[length] != 0) ++length;
 
-        InitString(name, userName.data(), 0);
+    if (result.IsSuccess() && length > 0) {
+        // Mii names are UTF-16 and RSDK strings store UTF-16 code units too, so copy them
+        // as-is instead of truncating to char (which broke accented names such as "João").
+        std::array<char, nn::act::MiiNameSize + 1> placeholder;
+        placeholder.fill('?');
+        placeholder[length] = '\0';
+
+        InitString(name, placeholder.data(), 0);
+        for (int32 i = 0; i < length; ++i) name->chars[i] = miiName[i];
     }
     else {
         InitString(name, "IntegerGeorge802", 0);
     }
-
-    nn::act::Finalize();
 #else
 #if !RETRO_USE_ORIGINAL_CODE
     if (strlen(customSettings.username) > 0)
