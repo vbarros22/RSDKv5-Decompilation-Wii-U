@@ -7,4 +7,4 @@
 [submodule "dependencies/wiiu/SDL"]
 	path = dependencies/wiiu/SDL
 	url = https://github.com/vbarros22/SDL.git
-	branch = misc
+	branch = wiiu-wut-compat
